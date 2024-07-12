@@ -48,7 +48,7 @@ python3 main.py -call ${delivery_location} {number_of_delivered_items} -t ${work
 * Capacity: 200
 * Penalty: 10
 ```python
-python3 main.py -call 47 5 -call 52 7 -call 55 12 -call 60 2 -call 80 9 -call 120 11 -call 244 21 -call 256 5 -call 300 10 -call 440 11 -call 442 8 -call 508 3 -call 532 14 -call 642 10 -call 842 6 -call 900 8 -call 1000 2 -call 1014 13 -call 1017 20 -call 1572 12 -t 3600 -c 200 -penalty 10
+python3 main.py -call 47 5 -call 52 7 -call 55 12 -call 60 2 -call 80 9 -call 120 11 -call 244 21 -call 256 5 -call 300 10 -call 440 11 -call 442 8 -call 508 3 -call 532 14 -call 642 10 -call 842 6 -call 900 8 -call 1000 2 -call 1014 13 -call 1017 20 -call 1572 12 -t 3600 -cap 200 -penalty 10
 ```
 
 #### Result
