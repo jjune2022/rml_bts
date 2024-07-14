@@ -55,7 +55,7 @@ python3 main.py -call 47 5 -call 52 7 -call 55 12 -call 60 2 -call 80 9 -call 12
 * The number of serviced packages: 136
 * Traveling time: about 3416.11 seconds
 * The number of visited locations: 15
-
-<img src="./img/seq.png" width="210" height="180"><img src="./img/path.png" width="210" height="180">
-
+<center>
+<img src="./img/seq.png" width="210" height="180"> <img src="./img/path.png" width="210" height="180">
+</center>
 The left is a sequence of locations and the right is a detailed path.
