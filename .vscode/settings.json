@@ -1,0 +1,14 @@
+{
+  "python.autoComplete.extraPaths": [
+    "/opt/ros/foxy/lib/python3.8/site-packages",
+    "/home/rml/scout_sim/devel/lib/python3/dist-packages",
+    "/home/rml/erp_cml/devel/lib/python3/dist-packages",
+    "/opt/ros/noetic/lib/python3/dist-packages"
+  ],
+  "python.analysis.extraPaths": [
+    "/opt/ros/foxy/lib/python3.8/site-packages",
+    "/home/rml/scout_sim/devel/lib/python3/dist-packages",
+    "/home/rml/erp_cml/devel/lib/python3/dist-packages",
+    "/opt/ros/noetic/lib/python3/dist-packages"
+  ]
+}
