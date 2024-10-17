@@ -1,0 +1,14 @@
+frequency: 10  # 데이터 처리 주기 (Hz)
+
+# GPS 토픽 관련 설정
+odom_frame: "odom"               # Odometry의 frame_id (odom 좌표계 프레임)
+base_link_frame: "base_link"     # 로봇의 기준 프레임 (보통 로봇의 base_link)
+world_frame: "utm"               # UTM 좌표계로 변환할 세계 좌표 프레임
+imu_data_topic: "/vectornav/IMU"  # IMU 데이터가 발행되는 토픽 이름
+gps_fix_topic: "/fix"            # GPS 데이터가 발행되는 토픽 이름
+use_odometry_yaw: false          # IMU 대신 odometry에서 yaw를 사용할지 여부 (IMU 사용)
+broadcast_utm_transform: true    # UTM 좌표계를 브로드캐스트 할지 여부
+broadcast_cartesian_transform: false  # 카르테시안 변환 브로드캐스트 사용 안함
+
+# GPS 초기 변환이 잘못된 경우 보정할 수 있는 필터 설정
+zero_altitude: true              # GPS 고도를 무시할지 여부 (높이 0으로 설정)

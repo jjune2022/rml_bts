@@ -1,0 +1,14 @@
+<launch>
+ 
+    <include file="$(find scout_localization)/launch/navsat_transform_test.launch" />
+ 
+    <!-- Run the ekf for map to odom config -->
+    <include file="$(find scout_localization)/launch/ekf_localization_test.launch" />
+ 
+    <!-- Run the map server -->
+    <!-- <include file="$(find scout_localization)/launch/start_map_server.launch" /> -->
+ 
+    <!--- Run Move Base -->
+    <!-- <include file="$(find my_move_base)/launch/my_move_base.launch" /> -->
+ 
+</launch>
