@@ -4,7 +4,11 @@ from visualization_msgs.msg import Marker
 from nav_msgs.msg import Path
 import numpy as np
 import math
+import sys
+sys.path.append('/home/rml/scout_sim/src/erp-cml/path/')
 from CubicSpline import cubic_spline_planner
+
+dl =0.1 # distance of interpolateed points
 
 class Pathplanner:
     def __init__(self):
@@ -15,7 +19,7 @@ class Pathplanner:
 
 
         # generate path , ck: curvature
-        self.cx, self.cy, self.cyaw, self.ck = self.generate_sine_wave_waypoints()
+        self.cx, self.cy, self.cyaw, self.ck = get_straight_course(dl)
 
 
 
@@ -43,7 +47,7 @@ class Pathplanner:
         marker.color.a = 1.0
 
         # Add points to the marker
-        for x, y in self.cx, self.cy:
+        for x, y in zip(self.cx, self.cy):
             p = Point()
             p.x = x
             p.y = y
@@ -63,7 +67,7 @@ class Pathplanner:
         path.header.stamp = rospy.Time.now()
 
         # Add points to the path
-        for x, y , yaw in self.cx, self.cy, self.cyaw:
+        for x, y , yaw in zip(self.cx, self.cy, self.cyaw):
             pose_stamped = PoseStamped()
             pose_stamped.header.frame_id = "odom"
             pose_stamped.header.stamp = rospy.Time.now()
