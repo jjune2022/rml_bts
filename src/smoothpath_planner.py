@@ -18,11 +18,11 @@ class Pathplanner:
         self.marker_id = 0  # Initialize marker ID
 
 
-        # generate path , ck: curvature
+        ### generate path for 4cases , ck: curvature
         self.cx, self.cy, self.cyaw, self.ck = get_straight_course(dl)
-
-
-
+        #self.cx, self.cy, self.cyaw, self.ck = get_straight_course1(dl)
+        #self.cx, self.cy, self.cyaw, self.ck = get_forward_course(dl)
+        #self.cx, self.cy, self.cyaw, self.ck = get_switch_back_course(dl)
 
     def publish_way_points_marker(self):
         """
@@ -88,7 +88,7 @@ def get_straight_course(dl):
     return cx, cy, cyaw, ck
 
 
-def get_straight_course3(dl):
+def get_straight_course1(dl):
     ax = [0.0, -10.0, -20.0, -40.0, -50.0, -60.0, -70.0]
     ay = [0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0]
     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
