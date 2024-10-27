@@ -31,5 +31,6 @@ catkin_package(
 catkin_install_python(PROGRAMS
   src/path_planner.py
   src/smoothpath_planner.py
+  src/smoothpath_local.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
