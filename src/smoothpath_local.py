@@ -35,7 +35,10 @@ class Pathplanner:
         self.marker_pub = rospy.Publisher('/transformed_points_marker', Marker, queue_size=10)
         self.path_pub = rospy.Publisher('/way_points', Path, queue_size=10)
         self.marker_id = 0  # Initialize marker ID
-
+        self.odom_pose = None
+        self.odom_twist = None
+        self.x0 = 0
+        self.y0 = 0
 
         ### generate path for 4cases , ck: curvature
         self.cx, self.cy, self.cyaw, self.ck = get_straight_course(dl)
@@ -86,7 +89,7 @@ class Pathplanner:
         path.header.stamp = rospy.Time.now()
 
         zref = calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
-                                    self.cyaw, sp, dl)
+                                    self.cyaw, sp, dl)[0]
 
 
         # Add points to the path
@@ -106,7 +109,6 @@ class Pathplanner:
     def odom_update(self, data):
         self.odom_pose = data.pose.pose
         self.odom_twist = data.twist.twist
-        self.theta0 = self.get_yaw_from_quaternion(self.odom_pose.orientation)
         self.x0, self.y0 = self.odom_pose.position.x, self.odom_pose.position.y
 
 ########################################### utils ###############################################
@@ -126,7 +128,7 @@ def calc_nearest_index(x0,y0, cx, cy, cyaw):
     closest_idx = 0
     min_dist =float('inf')
 
-    for i in range(range(len(cx))):
+    for i in range(len(cx)):
 
         dist = math.sqrt((x0 - cx[i]) ** 2 + (y0 - cy[i]) ** 2)
         if dist < min_dist:
