@@ -1,7 +1,7 @@
 """
 
 local planner(publish the all waypoints on local planner())
-publish(cx,cy,cyaw) - from closest_idx to car to closest_idx + 10
+publish(cx,cy,cyaw) - from closest_idx to car to closest_idx + (T-1)
 -c:course
 you can select the path type
 """
@@ -21,10 +21,10 @@ from CubicSpline import cubic_spline_planner
 # parameter
 dl =0.1 # distance of interpolateed points
 N_IND_SEARCH = 10  # Search index number
-sp =0.5 # constant linear velocity,, !!!!!!!!!!!!!!if change the value, you should change the 'linear velocity' on control node!!!!!!!!!!!!!!!!!!
+sp =1.5 # constant linear velocity,, !!!!!!!!!!!!!!if change the value, you should change the 'linear velocity' on control node!!!!!!!!!!!!!!!!!!
 NZ = 3 # # of state vector z = x,y,yaw
 NU = 2 # # of input vector u = v,w
-T = 5  # prediction horizon length
+T = 10  # prediction horizon length
 hz = 50 # callback rate
 dt = 1 / hz # time step
 
@@ -63,8 +63,8 @@ class Pathplanner:
         marker.scale.x = 0.1  # Line thickness
 
         # Set the color
-        marker.color.r = 1.0
-        marker.color.g = 0.0
+        marker.color.r = 0.0
+        marker.color.g = 0.3
         marker.color.b = 0.0
         marker.color.a = 1.0
 
@@ -75,6 +75,10 @@ class Pathplanner:
             p.y = y
             p.z = 0.0
             marker.points.append(p)
+
+
+
+
 
         # Publish the marker
         self.marker_pub.publish(marker)
@@ -88,12 +92,12 @@ class Pathplanner:
         path.header.frame_id = "odom"
         path.header.stamp = rospy.Time.now()
 
-        zref = calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
-                                    self.cyaw, sp, dl)[0]
+        zref , _= calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
+                                    self.cyaw, sp, dl)
 
 
         # Add points to the path
-        for i in range(zref.shape[1]):
+        for i in range(T):
             pose_stamped = PoseStamped()
             pose_stamped.header.frame_id = "odom"
             pose_stamped.header.stamp = rospy.Time.now()
@@ -150,7 +154,7 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
 
     """
 
-    zref = np.zeros((NZ, T + 1))
+    zref = np.zeros((NZ, T))
     ncourse = len(cx)
 
     ind, _ = calc_nearest_index(x0,y0, cx, cy, cyaw)
@@ -163,7 +167,7 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
 
     travel = 0.0
 
-    for i in range(T + 1):
+    for i in range(T):
         ## when sp(velocity) is high
         #travel += sp * dt
         #dind = int(round(travel / dl))
@@ -172,9 +176,13 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
         dind = 10
 
         if (ind + dind) < ncourse:
-            zref[0, i] = cx[ind + dind]
-            zref[1, i] = cy[ind + dind]
-            zref[2, i] = cyaw[ind + dind]
+            zref[0, i] = cx[i+ind + dind]
+            zref[1, i] = cy[i+ind + dind]
+            zref[2, i] = cyaw[i+ind + dind]
+
+
+
+
 
         else:
             zref[0, i] = cx[ncourse - 1]
