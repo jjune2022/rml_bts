@@ -150,10 +150,5 @@ if __name__ == "__main__":
 
     rate = rospy.Rate(hz)
     #while not (rospy.is_shutdown() or KeyboardInterrupt):
-    while True:
-        try:
-            rate.sleep()
-        except rospy.is_shutdown or KeyboardInterrupt:
-            break
-
-    save_results_and_shutdown()
+    while not rospy.is_shutdown():
+        rate.sleep()

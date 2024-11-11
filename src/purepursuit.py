@@ -124,7 +124,7 @@ class PurePursuitController:
 
         # Calculate the steering angle
         alpha = atan2(lookahead_point[1] - (self.y0- 0.232 * sin(self.theta0)), lookahead_point[0] - ((self.x0 - 0.232 * cos(self.theta0) ))) - self.theta0
-        steering_angle = atan2(2 * self.car_wheel_base * sin(alpha), ld)
+        steering_angle = atan2(2 * self.car_wheel_base * sin(alpha), ld)  # pure pursuit eq. !!!!!!!!!!!!!
         omega = steering_angle / self.dt
         omega = np.clip(omega, -2.5235, 2.5235)  # Limit angular velocity
 

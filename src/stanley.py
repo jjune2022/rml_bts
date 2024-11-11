@@ -55,7 +55,7 @@ class Stanleycontroller:
         self.max_vel = 2
         self.angles = np.linspace(0, np.pi, 100)
         self.waypoints = []
-        self.velocity = 0.1 # m/s
+        self.velocity = 2 # m/s
         stanley_k.append(self.k)
         stanley_vel.append(self.velocity)
 
