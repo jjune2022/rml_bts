@@ -204,13 +204,6 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
 
     return zref, ind
 
-
-####################################################################################################
-
-
-
-
-
 ########################################### path type###############################################
 def get_straight_course(dl):
     ax = [0.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0]
@@ -285,6 +278,7 @@ def save_csv_file_as_path(path):
         
 #전체 경로 시각화
 def plot_course(cx, cy):
+    plt.ion()
     plt.figure(figsize=(10, 5))
     plt.plot(cx, cy, label="Optimal Path", linewidth=2, color='red')
     plt.scatter(cx, cy, color='blue', label="Original Points")
@@ -294,6 +288,7 @@ def plot_course(cx, cy):
     plt.legend()
     plt.grid(True)
     plt.show()
+    plt.pause(0.1)
 ####################################################################################################
 
 if __name__ == '__main__':
