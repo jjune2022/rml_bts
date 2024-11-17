@@ -1,6 +1,10 @@
 # rml_bts
 1. purepursuit_v2.py 실행(현재 controller노드)
 
+```
+rosrun testdrive purepursuit_v2.py
+```
+
 2. rviz상에서 '/lookahead_marker'추가
 3. 
    
