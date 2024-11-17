@@ -21,14 +21,9 @@ catkin_package(
 
 
 catkin_install_python(PROGRAMS
-  src/testdrive.py
-  src/testdrive2.py
-  src/final_testdrive.py
-  src/drive_gurobi.py
-  src/stanley.py
-  src/purepursuit.py
+  src/stanley_v2.py
   src/purepursuit_v2.py
-  src/lqr.py
+  src/lqr_v2.py
   src/mpc.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
