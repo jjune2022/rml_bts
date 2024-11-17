@@ -1,9 +1,10 @@
 """
-
+#Date: 11.17.2024
 local planner(publish the all waypoints on local planner())
-publish(cx,cy,cyaw) - from closest_idx to car to closest_idx + 10
+publish(cx,cy,cyaw) - waypoints gone(5 points) + from closest_idx to car to closest_idx(1 points) + waypoints to go(9 points)
 -c:course
 you can select the path type
+
 """
 
 
@@ -18,7 +19,7 @@ import math
 import sys
 
 #Change the your sys path
-sys.path.append('/home/rml/catkin_ws/src/bts_planner')
+sys.path.append('/home/rml/scout_sim/src/erp-cml/path/')
 from CubicSpline import cubic_spline_planner
 
 import matplotlib.pyplot as plt
@@ -31,7 +32,7 @@ N_IND_SEARCH = 10  # Search index number
 sp =0.5 # constant linear velocity,, !!!!!!!!!!!!!!if change the value, you should change the 'linear velocity' on control node!!!!!!!!!!!!!!!!!!
 NZ = 3 # # of state vector z = x,y,yaw
 NU = 2 # # of input vector u = v,w
-T = 10  # prediction horizon length
+T = 15  # prediction horizon length
 hz = 50 # callback rate
 dt = 1 / hz # time step
 
@@ -46,10 +47,11 @@ class Pathplanner:
         self.odom_twist = None
         self.x0 = 0
         self.y0 = 0
-        
+
         #Change the file path
-        path = "/home/rml/catkin_ws/src/bts_planner/src/data/optimal_path.csv"
+        path = '/home/rml/scout_sim/src/erp-cml/path/data/optimal_path.csv'
         x_arrary, y_arrary = save_csv_file_as_path(path)
+        self.previous_idx = 0
 
         ### generate path for 4cases , ck: curvature
         #self.cx, self.cy, self.cyaw, self.ck = get_straight_course(dl)
@@ -57,14 +59,18 @@ class Pathplanner:
         #self.cx, self.cy, self.cyaw, self.ck = get_forward_course(dl)
         #self.cx, self.cy, self.cyaw, self.ck = get_switch_back_course(dl)
 
-        
+
         #get list & generate path
         self.cx, self.cy, self.cyaw, self.ck =get_optimal_course(dl, x_arrary, y_arrary)
-        
-        #전체 경로 확인
-        plot_course(self.cx, self.cy)
 
-        
+        #전체 경로 확인
+        #plot_course(self.cx, self.cy)
+
+    def odom_update(self, data):
+        self.odom_pose = data.pose.pose
+        self.odom_twist = data.twist.twist
+        self.x0, self.y0 = self.odom_pose.position.x, self.odom_pose.position.y
+
     def publish_way_points_marker(self):
         """
         Publish the waypoints to RViz as a Marker
@@ -107,9 +113,14 @@ class Pathplanner:
         path.header.frame_id = "odom"
         path.header.stamp = rospy.Time.now()
 
-        zref , _= calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
-                                    self.cyaw, sp, dl)
-        
+        zref , idx = calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
+                                    self.cyaw, sp, dl, self.previous_idx)
+        self.previous_idx = idx
+
+
+
+
+        print(len(zref[0,:]))
         # Add points to the path
         for i in range(T):
             pose_stamped = PoseStamped()
@@ -120,21 +131,15 @@ class Pathplanner:
             pose_stamped.pose.position.z = 0.0
             pose_stamped.pose.orientation.w = zref[2, i]
             path.poses.append(pose_stamped)
-            print(pose_stamped.pose.position)
-            
-            #
-            
+
         # Publish the path
         self.path_pub.publish(path)
 
-    def odom_update(self, data):
-        self.odom_pose = data.pose.pose
-        self.odom_twist = data.twist.twist
-        self.x0, self.y0 = self.odom_pose.position.x, self.odom_pose.position.y
+
 
 ########################################### utils ###############################################
 # calculation for nearest index
-def calc_nearest_index(x0,y0, cx, cy, cyaw):
+def calc_nearest_index(x0,y0, cx, cy, cyaw, previous_idx):
     """
     Simulation
 
@@ -147,9 +152,11 @@ def calc_nearest_index(x0,y0, cx, cy, cyaw):
     state vector z = x,y,yaw
     """
     closest_idx = 0
+    # Based on previous closest_idx(previous_idx) +- 20 points(becausoe of cross path problem)
+    search_range = range(max(0, previous_idx - 20), min(len(cx), previous_idx+ 20))
     min_dist =float('inf')
 
-    for i in range(len(cx)):
+    for i in search_range:
 
         dist = math.sqrt((x0 - cx[i]) ** 2 + (y0 - cy[i]) ** 2)
         if dist < min_dist:
@@ -158,7 +165,7 @@ def calc_nearest_index(x0,y0, cx, cy, cyaw):
 
     return closest_idx, min_dist
 
-def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
+def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl, previous_idx):
     """
     Simulation
 
@@ -170,11 +177,10 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
     dl: course tick [m]
 
     """
-
     zref = np.zeros((NZ, T))
     ncourse = len(cx)
 
-    ind, _ = calc_nearest_index(x0,y0, cx, cy, cyaw)
+    ind, _ = calc_nearest_index(x0,y0, cx, cy, cyaw, previous_idx)
 
     # state vector z = x,y,yaw
     zref[0, 0] = cx[ind]
@@ -184,32 +190,32 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
 
     travel = 0.0
 
+
+
     for i in range(T):
         ## when sp(velocity) is high
         #travel += sp * dt
         #dind = int(round(travel / dl))
 
         ## whensp is low
-        # dind = 10
+        dind = 10
 
-        # if (i+ind + dind) < ncourse:
-        #     zref[0, i] = cx[i+ind + dind]
-        #     zref[1, i] = cy[i+ind + dind]
-        #     zref[2, i] = cyaw[i+ind + dind]
+        if ind > 4 and (ind + dind) < ncourse: #10< ind < len(cx)
+            zref[0, i] = cx[i+ind - 5]
+            zref[1, i] = cy[i+ind -5]
+            zref[2, i] = cyaw[i+ind -5]
 
-        # else:
-        #     zref[0, i] = cx[ncourse - 1]
-        #     zref[1, i] = cy[ncourse - 1]
-        #     zref[2, i] = cyaw[ncourse - 1]
-        
-        dind = i * 10  # 속도에 따라 조정
 
-        # 경로 인덱스가 경로 길이를 넘지 않도록 제한
-        target_ind = min(ind + dind, ncourse - 1)
+        elif (ind + dind) < ncourse:
+            zref[0, i] = cx[i]
+            zref[1, i] = cy[i]
+            zref[2, i] = cyaw[i]
 
-        zref[0, i] = cx[target_ind]
-        zref[1, i] = cy[target_ind]
-        zref[2, i] = cyaw[target_ind]
+
+        else:
+            zref[0, i] = cx[ncourse - 1]
+            zref[1, i] = cy[ncourse - 1]
+            zref[2, i] = cyaw[ncourse - 1]
 
 
     return zref, ind
@@ -275,13 +281,13 @@ def get_optimal_course(dl, x_list, y_list):
 #     df = pd.read_csv(path)
 #     #x_arr = (df['longitude'].values-129.190)*10000
 #     #y_arr = (df['latitude'].values-35.572)*10000
-    
+
 #     x_arr = (df['longitude'].values)
 #     y_arr = (df['latitude'].values)
-    
+
 #     x_ls = x_arr.tolist()
 #     y_ls = y_arr.tolist()
-    
+
 #     return x_ls, y_ls
 
 def save_csv_file_as_path(path):
@@ -293,7 +299,7 @@ def save_csv_file_as_path(path):
     first_lat = df['latitude'].iloc[0]
     first_lon = df['longitude'].iloc[0]
     origin_x, origin_y = convert_to_odom(first_lon, first_lat)
-    
+
     # 모든 점을 기준점으로부터의 상대 좌표로 변환
     for lon, lat in zip(df['longitude'], df['latitude']):
         x, y = convert_to_odom(lon, lat)
@@ -306,19 +312,19 @@ def convert_to_odom(longitude, latitude):
     # UTM Zone 설정 (예: 한국의 동부 지역은 UTM 52N)
     proj_utm = Proj(proj='utm', zone=52, ellps='WGS84', preserve_units=False)
     proj_latlon = Proj(proj='latlong', datum='WGS84')
-    
+
     # Transformer 객체 생성
     transformer = Transformer.from_proj(proj_latlon, proj_utm)
-    
+
     # 좌표 변환 수행
     x, y = transformer.transform(longitude, latitude)
-    
-    print(f"Converted ({longitude}, {latitude}) to ({x}, {y})")
-    
+
+    # print(f"Converted ({longitude}, {latitude}) to ({x}, {y})")
+
     return x, y
 
 ####################################################################################################
-        
+
 #전체 경로 시각화
 def plot_course(cx, cy):
     plt.ion()
