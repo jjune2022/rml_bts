@@ -4,7 +4,7 @@ import rospy
 import numpy as np
 import tf2_ros
 import matplotlib.pyplot as plt
-from math import cos, sin, atan2, sqrt
+from math import cos, sin, tan
 from geometry_msgs.msg import Twist, Point
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker
@@ -13,6 +13,7 @@ from tf.transformations import euler_from_quaternion
 import signal
 from datetime import datetime
 import pandas as pd
+
 
 # x, y 위치 데이터를 저장할 리스트 초기화
 x_data = []
@@ -30,33 +31,35 @@ odom_x_for_cross_track_error = []
 path_x_data = []
 path_y_data = []
 
-pure_pursuit_ld_gain = []
-pure_pursuit_vel = []
-
-num_waypoints = 11
+stanley_k = []
+stanley_vel = []
 car_wheel_base=0.463
+L = car_wheel_base / 2
 
-class PurePursuitController:
-    def __init__(self, hz=50, ld_gain=1.0, ld_min = 3):
-        rospy.init_node('PurePursuitController')
+class Stanleycontroller:
+    def __init__(self, hz=50, k=0.05):
+        rospy.init_node('Stanleycontroller')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
-        self.marker_pub = rospy.Publisher('/lookahsead_marker', Marker, queue_size=10)
+        self.local_points = []
+        self.global_points = None
         self.hz = hz
         self.dt = 1 / hz  # time step
-        self.odom_pose = None
-        self.odom_twist = None
+        self.odom_pose = None  # position x, y, z, orientation x, y, z, w
+        self.odom_twist = None  # linear x, y, z, angular x, y, z
         self.x0 = 0.0
         self.y0 = 0.0
-        self.ld_min =ld_min
         self.theta0 = 0.0
-        self.ld_gain = ld_gain   # Lookahead distance gain
-        self.car_wheel_base = car_wheel_base
-        self.velocity = 1.5   # m/s
-        pure_pursuit_ld_gain.append(self.ld_gain)
-        pure_pursuit_vel.append(self.velocity)
-        self.waypoints = np.empty((3,0))
+        self.k = k            # Stanley controller gain for angle correction
+        self.min_vel = 0.0
+        self.marker_id = 0
+        self.max_vel = 2
+        self.angles = np.linspace(0, np.pi, 100)
+        self.waypoints = []
+        self.velocity = 2 # m/s
+        stanley_k.append(self.k)
+        stanley_vel.append(self.velocity)
 
     def odom_update(self, data):
         self.odom_pose = data.pose.pose
@@ -73,28 +76,23 @@ class PurePursuitController:
             path = np.array([[x], [y], [yaw]])
             self.waypoints = np.concatenate((self.waypoints, path), axis=1)
 
-        self.run_pure_pursuit()
-
-    def run_pure_pursuit(self):
-        # if (np.linalg.norm(self.waypoints[:,5]- self.waypoints[:,6])) == 0.0:
-        # # Publish control command
-        #     control_cmd = Twist()
-        #     control_cmd.linear.x = 0
-        #     control_cmd.angular.z = 0
-        #     self.pub.publish(control_cmd)
-        #     rospy.loginfo('!!Finished!!')
-        #     rospy.signal_shutdown()
-        #     return
+        self.run_stanley()
 
 
-        ld = self.ld_gain * self.velocity+self.ld_min  # Lookahead distance
+    def run_stanley(self):
+        if len(self.waypoints) < 2 or self.odom_pose is None:
+            return
+
+        v0 = self.velocity
+        velocity = self.velocity
+
         # estimate the cross-track error
         closest_idx = 0
         min_dist = float('inf')
 
-        # Find the closest waypoint ahead of the robot
+        # Find the closest waypoint of the robot front wheels
         for i in range(len(self.waypoints[0,:])):
-            dist = sqrt((self.x0 - self.waypoints[0, i]) ** 2 + (self.y0 - self.waypoints[1, i]) ** 2)
+            dist = np.sqrt(((self.x0 + L * np.cos(self.theta0)) - self.waypoints[0, i]) ** 2 + ((self.y0 + + L * np.sin(self.theta0)) - self.waypoints[1, i]) ** 2)
             if dist < min_dist:
                 min_dist = dist
                 #print()
@@ -104,81 +102,58 @@ class PurePursuitController:
             #print(f'{i}:', self.waypoints[1, i])
 
 
-        cross_track_error_data.append(min_dist)
 
+
+        # Waypoint to track is the closest one or next waypoint
+        target_wp = self.waypoints[:, closest_idx]
+        target_wp_2 = self.waypoints[:, closest_idx + 1]
         # Compute the heading error
         path_angle = self.waypoints[2, 5] # waypoint 6th(idx : 5) : yaw at nearest path
         heading_error =path_angle - self.theta0
 
         #Normalize heading error to [-pi, pi]
         heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
-        heading_error_data.append(heading_error)
+
+        #y-y1 = (tan(path_angle) * x1) * (x- x1)
+        #(tan(path_angle) * x1) * x -y +(-(tan(path_angle) * x1)* x1 + y1)
+        # the car's tangent line below: cross_track negative / above: positive
+
+
+        # Project RMS error onto front axle vector
+        front_axle_vec = [-np.cos(self.theta0 + np.pi / 2),
+                        -np.sin(self.theta0 + np.pi / 2)]
+        cross_track_error = np.dot([self.x0 - target_wp[0],self.y0 - target_wp[1]], front_axle_vec)
 
 
 
-        # Find the lookahead point
-        # Find the closest waypoint ahead of the robot
-        lookahead_point_idx= int(ld//0.1)
-        if num_waypoints < ld//0.1:
-            lookahead_point = self.waypoints[:, -1]
-        else:
-            lookahead_point = self.waypoints[:, lookahead_point_idx]
-
-
-
-        # Publish the lookahead point as a Marker
-        self.publish_lookahead_marker(lookahead_point)
-
-        # Calculate the steering angle
-        alpha = atan2(lookahead_point[1] - (self.y0- 0.232 * sin(self.theta0)), lookahead_point[0] - ((self.x0 - 0.232 * cos(self.theta0) ))) - self.theta0
-        steering_angle = atan2(2 * self.car_wheel_base * sin(alpha), ld)  # pure pursuit eq. !!!!!!!!!!!!!
-        omega = steering_angle / self.dt
+        # Stanley control
+        angle_correction = heading_error + np.arctan2(self.k * cross_track_error, self.velocity)
+        omega = angle_correction / self.dt  # /ref_pos 50초마다 publish
         omega = np.clip(omega, -2.5235, 2.5235)  # Limit angular velocity
-
+        print(f'{heading_error} + {np.arctan2(self.k * cross_track_error, self.velocity)}')
         # Publish control command
         control_cmd = Twist()
         control_cmd.linear.x = self.velocity
         control_cmd.angular.z = omega
         self.pub.publish(control_cmd)
 
-        rospy.loginfo(f"Velocity: {self.velocity}, Steering Angle: {steering_angle}, pose: {self.waypoints[:,0]}, Lookahead Point: {lookahead_point}")
+        #rospy.loginfo(f"Velocity: {velocity}, Angular Velocity: {omega}, Heading Error: {heading_error}, Path Distance: {cross_track_error}, Target: {target_wp}")
 
 
-    def publish_lookahead_marker(self, lookahead_point):
-        marker = Marker()
-        marker.header.frame_id = "odom"  # Set the frame ID to your coordinate frame
-        marker.header.stamp = rospy.Time.now()
-        marker.ns = "lookahead_point"
-        marker.id = 0
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = lookahead_point[0]
-        marker.pose.position.y = lookahead_point[1]
-        marker.pose.position.z = 0  # Assuming 2D navigation
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
-        marker.pose.orientation.w = 1.0
-        marker.scale.x = 0.2  # Size of the sphere
-        marker.scale.y = 0.2
-        marker.scale.z = 0.2
-        marker.color.a = 1.0  # Opacity
-        marker.color.r = 1.0  # Red
-        marker.color.g = 0.0  # Green
-        marker.color.b = 0.0  # Blue
-        self.marker_pub.publish(marker)
+
 
 def get_yaw_from_quaternion(q):
+    """
+    Convert a quaternion into yaw angle (in radians)
+    """
     euler = euler_from_quaternion([q.x, q.y, q.z, q.w])
     return euler[2]
-
-
 
 if __name__ == "__main__":
 
     hz = 50
-    rospy.init_node("PurePursuitController")
-    node = PurePursuitController(hz)
+    rospy.init_node("Stanleycontroller")
+    node = Stanleycontroller(hz)
 
 
     rate = rospy.Rate(hz)
