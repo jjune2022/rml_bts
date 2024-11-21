@@ -18,7 +18,7 @@ import math
 import sys
 
 #Change the your sys path
-sys.path.append('/home/jwchoi/scout_sim/src/path/')
+sys.path.append('/home/rml/scout_sim/src/erp-cml/path/')
 from CubicSpline import cubic_spline_planner
 
 import matplotlib.pyplot as plt
@@ -46,24 +46,24 @@ class Pathplanner:
         self.odom_twist = None
         self.x0 = 0
         self.y0 = 0
-        
+
         #Change the file path
-        path = "/home/jwchoi/scout_sim/src/path/data/temp_path.csv"
-        x_arrary, y_arrary = save_csv_file_as_path(path)
+        path_1 = '/home/rml/scout_sim/src/erp-cml/path/data/temp_path.csv'
+        x_arrary, y_arrary = save_csv_file_as_path(path_1)
 
         ### generate path for 4cases , ck: curvature
         #self.cx, self.cy, self.cyaw, self.ck = get_straight_course(dl)
         #self.cx, self.cy, self.cyaw, self.ck = get_straight_course1(dl)
         #self.cx, self.cy, self.cyaw, self.ck = get_forward_course(dl)
         #self.cx, self.cy, self.cyaw, self.ck = get_switch_back_course(dl)
-        
+
         #get list & generate path
         self.cx, self.cy, self.cyaw, self.ck =get_optimal_course(dl, x_arrary, y_arrary)
-        
+
         #전체 경로 확인
         plot_course(self.cx, self.cy)
 
-        
+
     def publish_way_points_marker(self):
         """
         Publish the waypoints to RViz as a Marker
@@ -108,7 +108,7 @@ class Pathplanner:
 
         zref , _= calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
                                     self.cyaw, sp, dl)
-        
+
         # Add points to the path
         for i in range(T):
             pose_stamped = PoseStamped()
@@ -120,9 +120,9 @@ class Pathplanner:
             pose_stamped.pose.orientation.w = zref[2, i]
             path.poses.append(pose_stamped)
             print(pose_stamped.pose.position)
-            
+
             #
-            
+
         # Publish the path
         self.path_pub.publish(path)
 
@@ -204,6 +204,13 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
 
     return zref, ind
 
+
+####################################################################################################
+
+
+
+
+
 ########################################### path type###############################################
 def get_straight_course(dl):
     ax = [0.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0]
@@ -265,20 +272,19 @@ def save_csv_file_as_path(path):
     df = pd.read_csv(path)
     #x_arr = (df['longitude'].values-129.190)*10000
     #y_arr = (df['latitude'].values-35.572)*10000
-    
+
     x_arr = (df['longitude'].values)
     y_arr = (df['latitude'].values)
-    
+
     x_ls = x_arr.tolist()
     y_ls = y_arr.tolist()
-    
+
     return x_ls, y_ls
 
 ####################################################################################################
-        
+
 #전체 경로 시각화
 def plot_course(cx, cy):
-    plt.ion()
     plt.figure(figsize=(10, 5))
     plt.plot(cx, cy, label="Optimal Path", linewidth=2, color='red')
     plt.scatter(cx, cy, color='blue', label="Original Points")
@@ -288,7 +294,6 @@ def plot_course(cx, cy):
     plt.legend()
     plt.grid(True)
     plt.show()
-    plt.pause(0.1)
 ####################################################################################################
 
 if __name__ == '__main__':

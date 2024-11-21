@@ -33,5 +33,6 @@ catkin_install_python(PROGRAMS
   src/smoothpath_planner.py
   src/smoothpath_local.py
   src/Astar_path_local.py
+  src/Astar_new.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
