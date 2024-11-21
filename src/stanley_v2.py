@@ -15,29 +15,21 @@ from datetime import datetime
 import pandas as pd
 
 
-# x, y 위치 데이터를 저장할 리스트 초기화
-x_data = []
-y_data = []
-
-# heading error와 path distance 데이터를 저장할 리스트 초기화
-heading_error_data = []
-cross_track_error_data = []
-
-# 추가: heading error와 path distance에 해당하는 x축 값 (odom.pose.x)을 저장할 리스트 초기화
-odom_x_for_heading_error = []
-odom_x_for_cross_track_error = []
-
-# 경로 데이터 저장
-path_x_data = []
-path_y_data = []
-
-stanley_k = []
-stanley_vel = []
+num_waypoints = 9
 car_wheel_base=0.463
 L = car_wheel_base / 2
 
+# test bench
+linear_velocity = 2.0
+
+
+
+
+
+
+
 class Stanleycontroller:
-    def __init__(self, hz=50, k=0.05):
+    def __init__(self, hz=50, k=1.0):
         rospy.init_node('Stanleycontroller')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
@@ -52,14 +44,11 @@ class Stanleycontroller:
         self.y0 = 0.0
         self.theta0 = 0.0
         self.k = k            # Stanley controller gain for angle correction
-        self.min_vel = 0.0
         self.marker_id = 0
-        self.max_vel = 2
         self.angles = np.linspace(0, np.pi, 100)
         self.waypoints = []
-        self.velocity = 2 # m/s
-        stanley_k.append(self.k)
-        stanley_vel.append(self.velocity)
+        self.velocity = linear_velocity # m/s
+
 
     def odom_update(self, data):
         self.odom_pose = data.pose.pose
@@ -86,13 +75,23 @@ class Stanleycontroller:
         v0 = self.velocity
         velocity = self.velocity
 
+        # Compute the heading error
+        path_angle = self.waypoints[2, 5] # waypoint 6th(idx : 5) : yaw at nearest path
+        heading_error =path_angle - self.theta0
+
+        #Normalize heading error to [-pi, pi]
+        heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
+
+        #y-y1 = (tan(path_angle) * x1) * (x- x1)
+        #(tan(path_angle) * x1) * x -y +(-(tan(path_angle) * x1)* x1 + y1)
+        # the car's tangent line below: cross_track negative / above: positive
         # estimate the cross-track error
         closest_idx = 0
         min_dist = float('inf')
 
         # Find the closest waypoint of the robot front wheels
         for i in range(len(self.waypoints[0,:])):
-            dist = np.sqrt(((self.x0 + L * np.cos(self.theta0)) - self.waypoints[0, i]) ** 2 + ((self.y0 + + L * np.sin(self.theta0)) - self.waypoints[1, i]) ** 2)
+            dist = np.sqrt(((self.x0 + L * np.cos(self.theta0)) - self.waypoints[0, i]) ** 2 + ((self.y0  + L * np.sin(self.theta0)) - self.waypoints[1, i]) ** 2)
             if dist < min_dist:
                 min_dist = dist
                 #print()
@@ -106,28 +105,18 @@ class Stanleycontroller:
 
         # Waypoint to track is the closest one or next waypoint
         target_wp = self.waypoints[:, closest_idx]
-        target_wp_2 = self.waypoints[:, closest_idx + 1]
-        # Compute the heading error
-        path_angle = self.waypoints[2, 5] # waypoint 6th(idx : 5) : yaw at nearest path
-        heading_error =path_angle - self.theta0
-
-        #Normalize heading error to [-pi, pi]
-        heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
-
-        #y-y1 = (tan(path_angle) * x1) * (x- x1)
-        #(tan(path_angle) * x1) * x -y +(-(tan(path_angle) * x1)* x1 + y1)
-        # the car's tangent line below: cross_track negative / above: positive
-
+        target_wp2 = self.waypoints[:, closest_idx+1]
 
         # Project RMS error onto front axle vector
-        front_axle_vec = [-np.cos(self.theta0 + np.pi / 2),
-                        -np.sin(self.theta0 + np.pi / 2)]
-        cross_track_error = np.dot([self.x0 - target_wp[0],self.y0 - target_wp[1]], front_axle_vec)
+        front_axle_vec = np.array([self.x0 - target_wp[0], self.y0 - target_wp[1]])
+        nearest_path_vec = np.array([target_wp2[0]-target_wp[0], target_wp2[1]-target_wp[1]])
+        cross_track_error = - np.sign(nearest_path_vec[0]*front_axle_vec[1] - nearest_path_vec[1]*front_axle_vec[0]) * min_dist
 
 
-
+        print(cross_track_error)
         # Stanley control
         angle_correction = heading_error + np.arctan2(self.k * cross_track_error, self.velocity)
+        angle_correction = (angle_correction + np.pi) % (2 * np.pi) - np.pi
         omega = angle_correction / self.dt  # /ref_pos 50초마다 publish
         omega = np.clip(omega, -2.5235, 2.5235)  # Limit angular velocity
         print(f'{heading_error} + {np.arctan2(self.k * cross_track_error, self.velocity)}')
@@ -136,6 +125,7 @@ class Stanleycontroller:
         control_cmd.linear.x = self.velocity
         control_cmd.angular.z = omega
         self.pub.publish(control_cmd)
+
 
         #rospy.loginfo(f"Velocity: {velocity}, Angular Velocity: {omega}, Heading Error: {heading_error}, Path Distance: {cross_track_error}, Target: {target_wp}")
 

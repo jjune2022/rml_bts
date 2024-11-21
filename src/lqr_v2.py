@@ -9,21 +9,31 @@ from visualization_msgs.msg import Marker
 from tf.transformations import euler_from_quaternion
 import pandas as pd
 import scipy.linalg as la
+import sys
+
+
+
+
+
+
+
 # Variables for tracking data (similar to Pure Pursuit)
-x_data = []
-y_data = []
-heading_error_data = []
-cross_track_error_data = []
-odom_x_for_heading_error = []
-odom_x_for_cross_track_error = []
-path_x_data = []
-path_y_data = []
-lqr_gain_values = []
-lqr_vel = []
 NZ = 3 # # of state vector z = x,y,yaw
 NU = 1 # # of input vector u = v,w
 hz = 50
 dt = 1 / hz  # time step
+
+
+
+num_waypoints = 9
+car_wheel_base=0.463
+L = car_wheel_base / 2
+
+# test bench
+linear_velocity = 2.0
+
+
+
 
 class LQRController:
     def __init__(self, hz=50, Q=np.diag([1.0, 1.0, 1.0]), R=np.diag([0.01]), car_wheel_base=0.463,disable_signals=True):
@@ -45,8 +55,6 @@ class LQRController:
         self.Q = Q  # State cost matrix
         self.R = R  # Input cost matrix
         self.waypoints = np.empty((3,0))
-        lqr_gain_values.append(self.Q)
-        lqr_vel.append(self.velocity)
 
     def odom_update(self, data):
         self.odom_pose = data.pose.pose
@@ -86,17 +94,8 @@ class LQRController:
             #print(f'{i}:', self.waypoints[1, i])
 
 
-        cross_track_error_data.append(min_dist)
-
         # Compute the heading error
         path_angle = self.waypoints[2,5] # waypoint 6th(idx : 5) : yaw at nearest path
-        heading_error =path_angle - self.theta0
-
-        #Normalize heading error to [-pi, pi]
-        heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
-        heading_error_data.append(heading_error)
-        odom_x_for_heading_error.append(self.x0)
-        odom_x_for_cross_track_error.append(self.x0)
 
         # Set current state and state error
         x_actual = np.array([self.x0, self.y0, self.theta0])
@@ -126,6 +125,7 @@ class LQRController:
         control_cmd.linear.x = v
         control_cmd.angular.z = w
         self.pub.publish(control_cmd)
+
 
         #rospy.loginfo(f"Velocity: {v}, Angular Velocity: {w}, Closest Waypoint: {self.waypoints[:, closest_idx]}")
 

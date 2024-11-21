@@ -1,8 +1,5 @@
-import os
-import sys
 import rospy
 import numpy as np
-import tf2_ros
 import matplotlib.pyplot as plt
 from math import cos, sin, atan2, sqrt
 from geometry_msgs.msg import Twist, Point
@@ -13,43 +10,37 @@ import signal
 from datetime import datetime
 import pandas as pd
 import cvxpy
-# Variables for tracking data (similar to Pure Pursuit)
-x_data = []
-y_data = []
-heading_error_data = []
-cross_track_error_data = []
-odom_x_for_heading_error = []
-odom_x_for_cross_track_error = []
-path_x_data = []
-path_y_data = []
-mpc_gain_values = []
-mpc_vel = []
+
+from datetime import datetime
+
 # iterative paramter
-MAX_ITER = 3  # Max iteration
+MAX_ITER = 20  # Max iteration
 DU_TH = 0.1  # iteration finish param
 # config
-car_wheel_base=0.463
 NZ = 3 # # of state vector z = x,y,yaw
-NU = 2 # # of input vector u = v,w
-T = 5  # prediction horizon length
-N_IND_SEARCH = 10  # Search index number
-linear_velocity = 1.5 # Set constant velocity, !!!!!!!!!!!!!!if change the value, you should change the 'sp' on pathplanner node!!!!!!!!!!!!!!!!!!
-hz = 50
+NU = 1# # of input vector u = v,w
+T = 8  # prediction horizon length
+
+hz = 10
 dt = 1 / hz  # time step
 max_w = 2.5235
 # weight matrix
-Q=np.diag([1.0, 1.0, 1.0])
+Q = np.diag([1.0, 1.0, 0.01])
 Qf = Q
-R=np.diag([0.01, 0.01])
-Rd = np.diag([0.01,1.0])
+R = np.diag([0.0000001])
+# Rd = R
 
+num_waypoints = 9
+car_wheel_base=0.463
+L = car_wheel_base / 2
 
+# test bench
+linear_velocity = 3.0# planner , parameter:sp but no used now
 
 
 class MPCController:
 
-    def __init__(self, hz = hz, Q=np.diag([1.0, 1.0, 1.0]),
-                  R=np.diag([0.01, 0.01]), Rd = np.diag([0.01,1.0]), max_w = max_w):
+    def __init__(self, max_w = max_w):
         rospy.init_node('MPCController')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
@@ -69,12 +60,10 @@ class MPCController:
         self.Q = Q  # State cost matrix
 
         self.R = R  # Input cost matrix
-        self.Rd = Rd # Input difference cost matrix
+        # self.Rd = Rd # Input difference cost matrix
         self.waypoints = np.empty((3, 0))
-        mpc_gain_values.append(self.Q)
-        mpc_vel.append(self.velocity)
 
-        self.Qf = Q  # state final matrix
+        # self.Qf = Qf  # state final matrix
         self.ov = None
         self.ow = None
 
@@ -93,16 +82,15 @@ class MPCController:
         self.max_w = max_w # 2. Maximum angular velocity change
         # 3. Maximum angular velocity
 
+
     def odom_update(self, data):
         self.odom_pose = data.pose.pose
         self.odom_twist = data.twist.twist
         self.theta0 = get_yaw_from_quaternion(self.odom_pose.orientation)
         self.x0, self.y0 = self.odom_pose.position.x, self.odom_pose.position.y
 
-
-
     def waypoints_callback(self, data):
-
+        self.waypoints = np.empty((3,0))
         for pose_stamped in data.poses:
             x = pose_stamped.pose.position.x
             y = pose_stamped.pose.position.y
@@ -110,31 +98,32 @@ class MPCController:
             path = np.array([[x], [y], [yaw]])
             self.waypoints = np.concatenate((self.waypoints, path), axis=1)
 
+
         self.iterative_linear_mpc_control()
+
+
 
     def iterative_linear_mpc_control(self):
         """
         MPC control with updating operational point iteratively
-
         """
-
+        start_time = datetime.now()  # 시작 시간 기록
 
         if self.ov is None or self.ow is None:
-            self.ov = get_nparray_from_matrix([0.0] * T)
-            self.ow = get_nparray_from_matrix([0.0] * T)
+            self.ov = np.zeros(T)
+            self.ow = np.zeros(T)
 
         z0 = [self.x0, self.y0, self.theta0]
+        zbar = None
         for i in range(MAX_ITER):
             zbar = predict_motion(z0, self.ov, self.ow, self.waypoints)
             pow = self.ow[:]
-            self.ov, self.ow, ox, oy, oyaw = linear_mpc_control(self.waypoints, z0, zbar)
+            self.ow, ox, oy, oyaw = linear_mpc_control(self.waypoints, z0, zbar)
             du = sum(abs(self.ow - pow))  # calc u change value
             if du <= DU_TH:
                 break
         else:
             print("Iterative is max iter")
-
-
 
         # limitation of maximum input
         w = np.clip(self.ow[0], -self.max_w, self.max_w)  # Limit angular velocity
@@ -145,7 +134,12 @@ class MPCController:
         control_cmd.angular.z = w
         self.pub.publish(control_cmd)
 
-        rospy.loginfo(f"Velocity: {v}, Angular Velocity: {w}, Closest Waypoint: {self.x0, self.y0}")
+        end_time = datetime.now()  # 종료 시간 기록
+        elapsed_time = (end_time - start_time).total_seconds()  # 실행 시간 계산
+        print(f"iterative_linear_mpc_control 실행 시간: {elapsed_time:.6f}초")
+
+
+
 
 
     def getB(self, theta, dt):
@@ -161,36 +155,6 @@ class MPCController:
         return K
 #################################################util############################3
 
-# calculation for nearest index
-def calc_nearest_index(state, cx, cy, cyaw, pind):
-    """
-    Simulation
-
-    cx: course x position list
-    cy: course y position list
-    cy: course yaw position list
-    cyaw: course yaw
-    """
-    dx = [state.x - icx for icx in cx[pind:(pind + N_IND_SEARCH)]]
-    dy = [state.y - icy for icy in cy[pind:(pind + N_IND_SEARCH)]]
-
-    d = [idx ** 2 + idy ** 2 for (idx, idy) in zip(dx, dy)]
-
-    mind = min(d)
-
-    ind = d.index(mind) + pind
-
-    mind = sqrt(mind)
-
-    dxl = cx[ind] - state.x
-    dyl = cy[ind] - state.y
-
-    # Upper of ref_path :positive
-    angle = pi_2_pi(cyaw[ind] - atan2(dyl, dxl))
-    if angle < 0:
-        mind *= -1
-
-    return ind, mind
 
 # coordinate transformation
 def get_yaw_from_quaternion(q):
@@ -274,17 +238,18 @@ def linear_mpc_control(zref, z0, zbar):
         cost += cvxpy.quad_form(zref[:,t]-z[:,t], Q) #cost for state excepted final state
         cost += cvxpy.quad_form(u[:, t], R) # cost for input
 
-        if t < (T - 1):
-            cost += cvxpy.quad_form(u[:, t + 1] - u[:, t], Rd) # cost for change of inputs
+        # if t < (T - 1):
+        #     cost += cvxpy.quad_form(u[:, t + 1] - u[:, t], Rd) # cost for change of inputs
 
         # get_linear_model_matrix(w,phi,dt)
         A,B,C = get_linear_model_matrix(zbar[2, t])
 
-        constraints += [z[:, t + 1] == A @ z[:, t] + B @ u[:, t] + C] # constraint 1
+        constraints += [z[:, t + 1] == A @ z[:, t] + B @ u[:, t] + C]
+
 
     constraints += [z[:, 0] == z0] # initial value
-    constraints += [cvxpy.abs(u[1, :]) <= max_w] # constarint 2
-    constraints += [cvxpy.abs(u[0, :]) <= linear_velocity] # constraint 3
+    constraints += [cvxpy.abs(u[0, :]) <= max_w] # constarint 2
+
 
 
     prob = cvxpy.Problem(cvxpy.Minimize(cost), constraints)
@@ -295,27 +260,28 @@ def linear_mpc_control(zref, z0, zbar):
         oy = get_nparray_from_matrix(z.value[1, :])
         oyaw = get_nparray_from_matrix(z.value[2, :])
         ov = get_nparray_from_matrix(u.value[0, :])
-        ow = get_nparray_from_matrix(u.value[1, :])
+
     else:
         print("Error: Cannot solve mpc..")
-        ov, ow, ox, oy, oyaw = None, None, None, None, None, None
+        ov, ox, oy, oyaw = None, None, None, None, None, None
 
-    return ov, ow, ox, oy, oyaw
+    return ov, ox, oy, oyaw
 
 
 # subject 1. linearized vehicle modle z_(t+dt) = A*z_(t) + B * u_t + C
 def get_linear_model_matrix(phi): # phi = self.theta0
+    cos_phi, sin_phi = cos(phi), sin(phi)
     A = np.zeros((NZ, NZ))
     A[0,0] = 1.0
     A[1,1] = 1.0
     A[2,2] = 1.0
 
     B = np.zeros((NZ, NU))
-    B[0,0] = cos(phi) * dt
-    B[1,0] = sin(phi) * dt
-    B[2,1] = dt
+    B[2,0] = dt
 
-    C = np.zeros((NZ, 1))
+    C = np.zeros(NZ)
+    C[0] = cos_phi * dt * linear_velocity
+    C[1] = sin_phi * dt * linear_velocity
 
     return A, B, C
 
@@ -331,7 +297,7 @@ def get_linear_model_matrix(phi): # phi = self.theta0
 
 if __name__ == "__main__":
 
-    hz = 50
+
     rospy.init_node("MPCController")
     node = MPCController(hz)
 

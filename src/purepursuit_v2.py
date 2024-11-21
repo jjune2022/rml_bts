@@ -14,30 +14,18 @@ import signal
 from datetime import datetime
 import pandas as pd
 
-# x, y 위치 데이터를 저장할 리스트 초기화
-x_data = []
-y_data = []
 
-# heading error와 path distance 데이터를 저장할 리스트 초기화
-heading_error_data = []
-cross_track_error_data = []
 
-# 추가: heading error와 path distance에 해당하는 x축 값 (odom.pose.x)을 저장할 리스트 초기화
-odom_x_for_heading_error = []
-odom_x_for_cross_track_error = []
 
-# 경로 데이터 저장
-path_x_data = []
-path_y_data = []
-
-pure_pursuit_ld_gain = []
-pure_pursuit_vel = []
-
-num_waypoints = 11
+num_waypoints = 9
 car_wheel_base=0.463
+L = car_wheel_base / 2
+
+# test bench
+linear_velocity = 0.3
 
 class PurePursuitController:
-    def __init__(self, hz=50, ld_gain=1.0, ld_min = 3):
+    def __init__(self, hz=50, ld_gain=1.0, ld_min = 5):
         rospy.init_node('PurePursuitController')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
@@ -53,9 +41,7 @@ class PurePursuitController:
         self.theta0 = 0.0
         self.ld_gain = ld_gain   # Lookahead distance gain
         self.car_wheel_base = car_wheel_base
-        self.velocity = 1.5   # m/s
-        pure_pursuit_ld_gain.append(self.ld_gain)
-        pure_pursuit_vel.append(self.velocity)
+        self.velocity = linear_velocity   # m/s
         self.waypoints = np.empty((3,0))
 
     def odom_update(self, data):
@@ -88,23 +74,7 @@ class PurePursuitController:
 
 
         ld = self.ld_gain * self.velocity+self.ld_min  # Lookahead distance
-        # estimate the cross-track error
-        closest_idx = 0
-        min_dist = float('inf')
 
-        # Find the closest waypoint ahead of the robot
-        for i in range(len(self.waypoints[0,:])):
-            dist = sqrt((self.x0 - self.waypoints[0, i]) ** 2 + (self.y0 - self.waypoints[1, i]) ** 2)
-            if dist < min_dist:
-                min_dist = dist
-                #print()
-                #print('mindist: ',min_dist)
-                closest_idx = i
-            #print(f'{i}:', self.waypoints[0, i])
-            #print(f'{i}:', self.waypoints[1, i])
-
-
-        cross_track_error_data.append(min_dist)
 
         # Compute the heading error
         path_angle = self.waypoints[2, 5] # waypoint 6th(idx : 5) : yaw at nearest path
@@ -112,7 +82,6 @@ class PurePursuitController:
 
         #Normalize heading error to [-pi, pi]
         heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
-        heading_error_data.append(heading_error)
 
 
 
@@ -130,7 +99,7 @@ class PurePursuitController:
         self.publish_lookahead_marker(lookahead_point)
 
         # Calculate the steering angle
-        alpha = atan2(lookahead_point[1] - (self.y0- 0.232 * sin(self.theta0)), lookahead_point[0] - ((self.x0 - 0.232 * cos(self.theta0) ))) - self.theta0
+        alpha = atan2(lookahead_point[1] - (self.y0- L * sin(self.theta0)), lookahead_point[0] - ((self.x0 - L * cos(self.theta0) ))) - self.theta0
         steering_angle = atan2(2 * self.car_wheel_base * sin(alpha), ld)  # pure pursuit eq. !!!!!!!!!!!!!
         omega = steering_angle / self.dt
         omega = np.clip(omega, -2.5235, 2.5235)  # Limit angular velocity
@@ -140,6 +109,7 @@ class PurePursuitController:
         control_cmd.linear.x = self.velocity
         control_cmd.angular.z = omega
         self.pub.publish(control_cmd)
+
 
         rospy.loginfo(f"Velocity: {self.velocity}, Steering Angle: {steering_angle}, pose: {self.waypoints[:,0]}, Lookahead Point: {lookahead_point}")
 
