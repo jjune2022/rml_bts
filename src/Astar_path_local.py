@@ -46,6 +46,7 @@ class Pathplanner:
         self.odom_twist = None
         self.x0 = 0
         self.y0 = 0
+        self.previous_idx = 0
 
         #Change the file path
         path_1 = '/home/rml/scout_sim/src/erp-cml/path/data/temp_path.csv'
@@ -98,6 +99,7 @@ class Pathplanner:
         self.marker_pub.publish(marker)
         self.marker_id += 1  # Increment the marker ID for the next marker
 
+
     def publish_way_points_path(self):
         """
         Publish the waypoints to RViz as a Path
@@ -106,9 +108,14 @@ class Pathplanner:
         path.header.frame_id = "odom"
         path.header.stamp = rospy.Time.now()
 
-        zref , _= calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
-                                    self.cyaw, sp, dl)
+        zref , idx = calc_ref_trajectory(self.x0, self.y0, self.cx, self.cy,
+                                    self.cyaw, sp, dl, self.previous_idx)
+        self.previous_idx = idx
 
+
+
+
+        print(len(zref[0,:]))
         # Add points to the path
         for i in range(T):
             pose_stamped = PoseStamped()
@@ -119,9 +126,6 @@ class Pathplanner:
             pose_stamped.pose.position.z = 0.0
             pose_stamped.pose.orientation.w = zref[2, i]
             path.poses.append(pose_stamped)
-            print(pose_stamped.pose.position)
-
-            #
 
         # Publish the path
         self.path_pub.publish(path)
@@ -133,7 +137,7 @@ class Pathplanner:
 
 ########################################### utils ###############################################
 # calculation for nearest index
-def calc_nearest_index(x0,y0, cx, cy, cyaw):
+def calc_nearest_index(x0,y0, cx, cy, cyaw, previous_idx):
     """
     Simulation
 
@@ -146,9 +150,11 @@ def calc_nearest_index(x0,y0, cx, cy, cyaw):
     state vector z = x,y,yaw
     """
     closest_idx = 0
+    # Based on previous closest_idx(previous_idx) +- 20 points(becausoe of cross path problem)
+    search_range = range(max(0, previous_idx - 20), min(len(cx), previous_idx + 20))
     min_dist =float('inf')
 
-    for i in range(len(cx)):
+    for i in search_range:
 
         dist = math.sqrt((x0 - cx[i]) ** 2 + (y0 - cy[i]) ** 2)
         if dist < min_dist:
@@ -157,7 +163,7 @@ def calc_nearest_index(x0,y0, cx, cy, cyaw):
 
     return closest_idx, min_dist
 
-def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
+def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl, previous_idx):
     """
     Simulation
 
@@ -169,11 +175,10 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
     dl: course tick [m]
 
     """
-
     zref = np.zeros((NZ, T))
     ncourse = len(cx)
 
-    ind, _ = calc_nearest_index(x0,y0, cx, cy, cyaw)
+    ind, _ = calc_nearest_index(x0,y0, cx, cy, cyaw, previous_idx)
 
     # state vector z = x,y,yaw
     zref[0, 0] = cx[ind]
@@ -183,6 +188,7 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
 
     travel = 0.0
 
+
     for i in range(T):
         ## when sp(velocity) is high
         #travel += sp * dt
@@ -191,15 +197,22 @@ def calc_ref_trajectory(x0, y0, cx, cy, cyaw, sp, dl):
         ## whensp is low
         dind = 10
 
-        if (i+ind + dind) < ncourse:
-            zref[0, i] = cx[i+ind + dind]
-            zref[1, i] = cy[i+ind + dind]
-            zref[2, i] = cyaw[i+ind + dind]
+        if ind > 4 and (ind + dind) < ncourse: #10< ind < len(cx)
+            zref[0, i] = cx[i+ind - 5]
+            zref[1, i] = cy[i+ind -5]
+            zref[2, i] = cyaw[i+ind -5]
+
+
+        elif (ind + dind) < ncourse:
+            zref[0, i] = cx[i]
+            zref[1, i] = cy[i]
+            zref[2, i] = cyaw[i]
+
 
         else:
-            zref[0, i] = cx[ncourse - 1]
-            zref[1, i] = cy[ncourse - 1]
-            zref[2, i] = cyaw[ncourse - 1]
+            zref[0, i] = cx[-1]
+            zref[1, i] = cy[-1]
+            zref[2, i] = cyaw[-1]
 
 
     return zref, ind

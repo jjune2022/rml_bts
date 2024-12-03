@@ -28,7 +28,23 @@ NU = 2 # # of input vector u = v,w
 T = 15  # prediction horizon length
 hz = 10 # callback rate
 dt = 1 / hz # time step
+# # 경로 데이터 생성
+# def get_sine_course(dl):
+#     """사인파 경로 생성"""
+#     ax = np.arange(0, 50, 1.0)
+#     ay = 3.0 * np.sin(ax / 3.0)
+#     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(ax, ay, ds=dl)
+#     return cx, cy, cyaw, ck
 
+
+# dl = 0.1  # 간격 설정
+# cx, cy, cyaw, ck = get_sine_course(dl)
+
+
+# # 데이터 파일로 저장
+# with open("sine_course.txt", "w") as f:
+#     for x, y in zip(cx, cy):
+#         f.write(f"({x:.6f}, {y:.6f})\n")
 class Pathplanner:
     def __init__(self):
         rospy.init_node('Pathplanner')
@@ -47,8 +63,16 @@ class Pathplanner:
         #self.cx, self.cy, self.cyaw, self.ck = get_straight_course1(dl)
         #self.cx, self.cy, self.cyaw, self.ck = get_forward_course(dl)
         #self.cx, self.cy, self.cyaw, self.ck = get_switch_back_course(dl)
-        #self.cx, self.cy, self.cyaw, self.ck = get_sine_course(dl)
-        self.cx, self.cy, self.cyaw, self.ck = get_infinite_course(dl)
+        self.cx, self.cy, self.cyaw, self.ck = get_sine_course(dl)
+        # self.cx, self.cy, self.cyaw, self.ck = get_infinite_course(dl)
+
+
+
+
+
+
+
+
 
 
 
@@ -143,7 +167,7 @@ def calc_nearest_index(x0,y0, cx, cy, cyaw, previous_idx):
     """
     closest_idx = 0
     # Based on previous closest_idx(previous_idx) +- 20 points(becausoe of cross path problem)
-    search_range = range(max(0, previous_idx - 20), min(len(cx), previous_idx+ 20))
+    search_range = range(max(0, previous_idx - 20), min(len(cx), previous_idx + 20))
     min_dist =float('inf')
 
     for i in search_range:
@@ -259,12 +283,12 @@ def get_straight_course(dl):
     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(ax, ay, ds=dl)
     return cx, cy, cyaw, ck
 
-def get_sine_course(dl):
-    """사인파 경로 생성"""
-    ax = np.arange(0, 50, 1.0)
-    ay = 3.0 * np.sin(ax / 3.0)
-    cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(ax, ay, ds=dl)
-    return cx, cy, cyaw, ck
+# def get_sine_course(dl):
+#     """사인파 경로 생성"""
+#     ax = np.arange(0, 50, 1.0)
+#     ay = 3.0 * np.sin(ax / 3.0)
+#     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(ax, ay, ds=dl)
+#     return cx, cy, cyaw, ck
 
 def get_infinite_course(dl):
     """무한대(∞) 모양 경로 생성"""
@@ -272,8 +296,9 @@ def get_infinite_course(dl):
     ay = []
 
     # 무한대 모양을 파라메트릭 방정식으로 생성
-    t = np.linspace(0, 2*np.pi, 63)  # 63개 포인트로 설정하여 시작점과 끝점이 (0,0)이 되도록 함
-    a = 10  # 가로 크기
+    #t = np.linspace(0, 2*np.pi, 63)  # 63개 포인트로 설정하여 시작점과 끝점이 (0,0)이 되도록 함
+    t = np.arange(0, 2*np.pi, 0.1)
+    a = 30  # 가로 크기
     b = 5   # 세로 크기
 
     # 리사주 곡선을 이용한 무한대 모양
@@ -321,13 +346,20 @@ def get_switch_back_course(dl):
 
     return cx, cy, cyaw, ck
 
+def get_sine_course(dl):
+    """사인파 경로 생성"""
+    ax = np.arange(0, 50, 1.0)
+    ay = 3.0 * np.sin(ax / 3.0)
+    cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(ax, ay, ds=dl)
+    return cx, cy, cyaw, ck
+
 
 
 ####################################################################################################
 
 if __name__ == '__main__':
     path_planner = Pathplanner()
-    rate = rospy.Rate(hz)  # 50 Hz
+    rate = rospy.Rate(hz)  # 10 Hz
     while not rospy.is_shutdown():
         path_planner.publish_way_points_marker()
         path_planner.publish_way_points_path()
