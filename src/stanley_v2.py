@@ -20,16 +20,16 @@ car_wheel_base=0.463
 L = car_wheel_base / 2
 
 # test bench
-linear_velocity = 2.0
+linear_velocity = 1.0
 
-
+max_w = 0.7
 
 
 
 
 
 class Stanleycontroller:
-    def __init__(self, hz=50, k=1.0):
+    def __init__(self, hz=10, k=1.0):
         rospy.init_node('Stanleycontroller')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
@@ -118,7 +118,7 @@ class Stanleycontroller:
         angle_correction = heading_error + np.arctan2(self.k * cross_track_error, self.velocity)
         angle_correction = (angle_correction + np.pi) % (2 * np.pi) - np.pi
         omega = angle_correction / self.dt  # /ref_pos 50초마다 publish
-        omega = np.clip(omega, -2.5235, 2.5235)  # Limit angular velocity
+        omega = np.clip(omega, -max_w, max_w)  # Limit angular velocity
         print(f'{heading_error} + {np.arctan2(self.k * cross_track_error, self.velocity)}')
         # Publish control command
         control_cmd = Twist()
@@ -141,7 +141,7 @@ def get_yaw_from_quaternion(q):
 
 if __name__ == "__main__":
 
-    hz = 50
+    hz = 10
     rospy.init_node("Stanleycontroller")
     node = Stanleycontroller(hz)
 

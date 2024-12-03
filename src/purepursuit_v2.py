@@ -15,17 +15,17 @@ from datetime import datetime
 import pandas as pd
 
 
-
+max_w = 0.7
 
 num_waypoints = 9
 car_wheel_base=0.463
 L = car_wheel_base / 2
 
 # test bench
-linear_velocity = 0.3
+linear_velocity = 1.0
 
 class PurePursuitController:
-    def __init__(self, hz=50, ld_gain=1.0, ld_min = 5):
+    def __init__(self, hz=10, ld_gain=1.0, ld_min = 3):
         rospy.init_node('PurePursuitController')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
@@ -102,12 +102,17 @@ class PurePursuitController:
         alpha = atan2(lookahead_point[1] - (self.y0- L * sin(self.theta0)), lookahead_point[0] - ((self.x0 - L * cos(self.theta0) ))) - self.theta0
         steering_angle = atan2(2 * self.car_wheel_base * sin(alpha), ld)  # pure pursuit eq. !!!!!!!!!!!!!
         omega = steering_angle / self.dt
-        omega = np.clip(omega, -2.5235, 2.5235)  # Limit angular velocity
+        omega = np.clip(omega, -max_w, max_w)  # Limit angular velocity
 
         # Publish control command
         control_cmd = Twist()
         control_cmd.linear.x = self.velocity
         control_cmd.angular.z = omega
+
+
+
+
+
         self.pub.publish(control_cmd)
 
 
@@ -146,7 +151,7 @@ def get_yaw_from_quaternion(q):
 
 if __name__ == "__main__":
 
-    hz = 50
+    hz = 10
     rospy.init_node("PurePursuitController")
     node = PurePursuitController(hz)
 

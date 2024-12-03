@@ -17,25 +17,25 @@ from datetime import datetime
 MAX_ITER = 20  # Max iteration
 DU_TH = 0.1  # iteration finish param
 # config
-NZ = 3 # # of state vector z = x,y,yaw
+NZ = 4 # # of state vector z = x,y,yaw
 NU = 1# # of input vector u = v,w
 T = 8  # prediction horizon length
 
 hz = 10
 dt = 1 / hz  # time step
-max_w = 2.5235
+max_w = 0.7
 # weight matrix
-Q = np.diag([1.0, 1.0, 0.01])
-Qf = Q
-R = np.diag([0.0000001])
-# Rd = R
+Q = np.diag([100.0, 100.0, 50.0, 10.0])
+Qf = Q * 5
+R = np.diag([0.01])
+# Rd = np.diag([1.00])
 
 num_waypoints = 9
 car_wheel_base=0.463
 L = car_wheel_base / 2
 
 # test bench
-linear_velocity = 3.0# planner , parameter:sp but no used now
+linear_velocity = 1.0# planner , parameter:sp but no used now
 
 
 class MPCController:
@@ -90,13 +90,14 @@ class MPCController:
         self.x0, self.y0 = self.odom_pose.position.x, self.odom_pose.position.y
 
     def waypoints_callback(self, data):
-        self.waypoints = np.empty((3,0))
+        self.waypoints = np.empty((4,0))
         for pose_stamped in data.poses:
             x = pose_stamped.pose.position.x
             y = pose_stamped.pose.position.y
             yaw = pose_stamped.pose.orientation.w
-            path = np.array([[x], [y], [yaw]])
+            path = np.array([[x], [y], [yaw],[linear_velocity]])
             self.waypoints = np.concatenate((self.waypoints, path), axis=1)
+
 
 
         self.iterative_linear_mpc_control()
@@ -113,10 +114,10 @@ class MPCController:
             self.ov = np.zeros(T)
             self.ow = np.zeros(T)
 
-        z0 = [self.x0, self.y0, self.theta0]
+        z0 = [self.x0, self.y0, self.theta0, linear_velocity]
         zbar = None
         for i in range(MAX_ITER):
-            zbar = predict_motion(z0, self.ov, self.ow, self.waypoints)
+            zbar = predict_motion(z0, self.ov, self.ow, self.waypoints, linear_velocity)
             pow = self.ow[:]
             self.ow, ox, oy, oyaw = linear_mpc_control(self.waypoints, z0, zbar)
             du = sum(abs(self.ow - pow))  # calc u change value
@@ -168,11 +169,11 @@ def pi_2_pi(angle):
 def get_nparray_from_matrix(x):
     return np.array(x).flatten()
 
-def predict_motion(z0, ov, ow, zref):
+def predict_motion(z0, ov, ow, zref, linear_velocity = linear_velocity):
     #z0= x0,y0,yaw0
 
     zbar = zref * 0.0
-    for i, _ in enumerate(z0):
+    for i in range(4):
         zbar[i, 0] = z0[i]
 
     state = State(x=z0[0], y=z0[1], yaw=z0[2])
@@ -181,6 +182,7 @@ def predict_motion(z0, ov, ow, zref):
         zbar[0, i] = state.x
         zbar[1, i] = state.y
         zbar[2, i] = state.yaw
+        zbar[3, i] = linear_velocity
 
     return zbar
 
@@ -239,12 +241,13 @@ def linear_mpc_control(zref, z0, zbar):
         cost += cvxpy.quad_form(u[:, t], R) # cost for input
 
         # if t < (T - 1):
-        #     cost += cvxpy.quad_form(u[:, t + 1] - u[:, t], Rd) # cost for change of inputs
+            # cost += cvxpy.quad_form(u[:, t + 1] - u[:, t], Rd) # cost for change of inputs
 
         # get_linear_model_matrix(w,phi,dt)
-        A,B,C = get_linear_model_matrix(zbar[2, t])
+        A,B = get_linear_model_matrix(zbar[2, t])
 
-        constraints += [z[:, t + 1] == A @ z[:, t] + B @ u[:, t] + C]
+        # constraints += [z[:, t + 1] == A @ z[:, t] + B @ u[:, t] + C]
+        constraints += [z[:, t + 1] == A @ z[:, t] + B @ u[:, t]] # constraint 1
 
 
     constraints += [z[:, 0] == z0] # initial value
@@ -268,26 +271,44 @@ def linear_mpc_control(zref, z0, zbar):
     return ov, ox, oy, oyaw
 
 
-# subject 1. linearized vehicle modle z_(t+dt) = A*z_(t) + B * u_t + C
+# # subject 1. linearized vehicle modle z_(t+dt) = A*z_(t) + B * u_t + C
+# def get_linear_model_matrix(phi): # phi = self.theta0
+#     cos_phi, sin_phi = cos(phi), sin(phi)
+#     A = np.zeros((NZ, NZ))
+#     A[0,0] = 1.0
+#     A[1,1] = 1.0
+#     A[2,2] = 1.0
+
+#     B = np.zeros((NZ, NU))
+#     B[2,0] = dt
+
+#     C = np.zeros(NZ)
+#     C[0] = cos_phi * dt * linear_velocity
+#     C[1] = sin_phi * dt * linear_velocity
+
+#     return A, B, C
+
+
+
+
 def get_linear_model_matrix(phi): # phi = self.theta0
     cos_phi, sin_phi = cos(phi), sin(phi)
+
     A = np.zeros((NZ, NZ))
     A[0,0] = 1.0
     A[1,1] = 1.0
     A[2,2] = 1.0
+    A[3,3] = 1.0
+
+    A[0,3] = (1 + cos_phi)*dt
+    A[1,3] = (1 + sin_phi)*dt
+
 
     B = np.zeros((NZ, NU))
     B[2,0] = dt
 
-    C = np.zeros(NZ)
-    C[0] = cos_phi * dt * linear_velocity
-    C[1] = sin_phi * dt * linear_velocity
 
-    return A, B, C
-
-
-
-
+    return A, B
 
 
 

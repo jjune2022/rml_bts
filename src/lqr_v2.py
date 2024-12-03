@@ -1,4 +1,3 @@
-
 import rospy
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,15 +11,16 @@ import scipy.linalg as la
 import sys
 
 
+from datetime import datetime
 
 
 
-
+max_w = 0.7
 
 # Variables for tracking data (similar to Pure Pursuit)
-NZ = 3 # # of state vector z = x,y,yaw
+NZ = 4 # # of state vector z = x,y,yaw,v
 NU = 1 # # of input vector u = v,w
-hz = 50
+hz = 10
 dt = 1 / hz  # time step
 
 
@@ -30,14 +30,14 @@ car_wheel_base=0.463
 L = car_wheel_base / 2
 
 # test bench
-linear_velocity = 2.0
+linear_velocity = 1.0
 
 
 
 
 class LQRController:
-    def __init__(self, hz=50, Q=np.diag([1.0, 1.0, 1.0]), R=np.diag([0.01]), car_wheel_base=0.463,disable_signals=True):
-        rospy.init_node('LQRController')
+    def __init__(self, hz=10, Q=np.diag([100.0, 100.0, 3.0, 0.5]), R=np.diag([0.001]), car_wheel_base=0.463,disable_signals=True):
+        rospy.init_node('Controller')
         rospy.Subscriber("/odom", Odometry, self.odom_update)
         rospy.Subscriber('/way_points', Path, self.waypoints_callback)
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
@@ -51,7 +51,7 @@ class LQRController:
         self.y0 = 0.0
         self.theta0 = 0.0
         self.car_wheel_base = car_wheel_base
-        self.velocity = 1.5   # Set velocity
+        self.velocity = linear_velocity   # Set velocity
         self.Q = Q  # State cost matrix
         self.R = R  # Input cost matrix
         self.waypoints = np.empty((3,0))
@@ -78,6 +78,8 @@ class LQRController:
         if len(self.waypoints[:, 0]) < 2 or self.odom_pose is None:
             return
 
+
+        start_time = datetime.now()  # 시작 시간 기록
         # estimate the cross-track error
         closest_idx = 0
         min_dist = float('inf')
@@ -98,9 +100,9 @@ class LQRController:
         path_angle = self.waypoints[2,5] # waypoint 6th(idx : 5) : yaw at nearest path
 
         # Set current state and state error
-        x_actual = np.array([self.x0, self.y0, self.theta0])
-        x_desired = np.array([self.waypoints[0, closest_idx + 1], self.waypoints[1, closest_idx + 1], path_angle])
-        state_error = x_actual - x_desired
+        x_actual = np.array([self.x0, self.y0, self.theta0, linear_velocity])
+        x_desired = np.array([self.waypoints[0, closest_idx + 1], self.waypoints[1, closest_idx + 1], path_angle, linear_velocity])
+        state_error =-x_desired +x_actual
 
         # LQR controller
 
@@ -115,7 +117,7 @@ class LQRController:
         #v = np.clip(u[0], -self.velocity, self.velocity)  # Limit velocity based on current settings
         v = self.velocity
 
-        w = np.clip(u[0], -2.5235, 2.5235)  # Limit angular velocity
+        w = np.clip(u[0], -max_w, max_w)  # Limit angular velocity
 
 
 
@@ -124,6 +126,15 @@ class LQRController:
         control_cmd = Twist()
         control_cmd.linear.x = v
         control_cmd.angular.z = w
+
+        end_time = datetime.now()  # 종료 시간 기록
+        elapsed_time = (end_time - start_time).total_seconds()  # 실행 시간 계산
+        print(f"iterative_linear_lqr_control 실행 시간: {elapsed_time:.6f}초")
+
+
+
+
+
         self.pub.publish(control_cmd)
 
 
@@ -137,13 +148,21 @@ def get_yaw_from_quaternion(q):
 
 
 def get_linear_model_matrix(phi): # phi = self.theta0
+    cos_phi, sin_phi = cos(phi), sin(phi)
+
     A = np.zeros((NZ, NZ))
     A[0,0] = 1.0
     A[1,1] = 1.0
     A[2,2] = 1.0
+    A[3,3] = 1.0
+
+    A[0,3] = (cos_phi)*dt
+    A[1,3] = (sin_phi)*dt
+
 
     B = np.zeros((NZ, NU))
     B[2,0] = dt
+
 
     return A, B
 
@@ -190,7 +209,7 @@ def dlqr(A, B, Q, R):
 if __name__ == "__main__":
 
     hz = 50
-    rospy.init_node("LQRController")
+    rospy.init_node("Controller")
     node = LQRController(hz)
 
 
